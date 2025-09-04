@@ -320,9 +320,29 @@
     </div>
   </footer>
 
-  <!-- Script -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
   <script>
+    // 🔐 Replace with your Firebase config (from Firebase Console)
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "your-project-id.firebaseapp.com",
+      projectId: "your-project-id",
+      storageBucket: "your-project-id.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abc123def456"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+
+    // Firebase services
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
     // DOM Elements
     const signupBtn = document.getElementById('signupBtn');
     const loginBtn = document.getElementById('loginBtn');
@@ -364,21 +384,28 @@
       const email = document.getElementById('signupEmail').value;
       const password = document.getElementById('signupPassword').value;
 
-      // Check if user already exists
-      const users = JSON.parse(localStorage.getItem('charcoalUsers')) || {};
-      if (users[email]) {
-        alert('User with this email already exists!');
-        return;
-      }
-
-      // Hash password with bcrypt
-      bcrypt.hash(password, 12).then(hash => {
-        users[email] = { name, password: hash, createdAt: new Date() };
-        localStorage.setItem('charcoalUsers', JSON.stringify(users));
-        alert('✅ Account created successfully!');
-        signupForm.reset();
-        signupModal.style.display = 'none';
-      });
+      auth.createUserWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          const user = userCredential.user;
+          // Save user data to Firestore
+          return db.collection('users').doc(user.uid).set({
+            name: name,
+            email: email,
+            createdAt: new Date()
+          });
+        })
+        .then(() => {
+          alert('✅ Account created successfully!');
+          signupForm.reset();
+          signupModal.style.display = 'none';
+        })
+        .catch(error => {
+          if (error.code === 'auth/email-already-in-use') {
+            alert('❌ This email is already registered.');
+          } else {
+            alert('❌ Error: ' + error.message);
+          }
+        });
     });
 
     // Handle Login
@@ -387,23 +414,26 @@
       const email = document.getElementById('loginEmail').value;
       const password = document.getElementById('loginPassword').value;
 
-      const users = JSON.parse(localStorage.getItem('charcoalUsers')) || {};
-
-      if (!users[email]) {
-        alert('❌ No account found with this email.');
-        return;
-      }
-
-      // Compare password
-      bcrypt.compare(password, users[email].password).then(match => {
-        if (match) {
-          alert(`✅ Welcome back, ${users[email].name}!`);
+      auth.signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          const user = userCredential.user;
+          // Log login activity
+          db.collection('activity').add({
+            userId: user.uid,
+            action: 'login',
+            timestamp: new Date()
+          });
+          alert(`✅ Welcome back, ${user.email}!`);
           loginForm.reset();
           loginModal.style.display = 'none';
-        } else {
-          alert('❌ Incorrect password.');
-        }
-      });
+        })
+        .catch(error => {
+          if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+            alert('❌ Invalid email or password.');
+          } else {
+            alert('❌ Error: ' + error.message);
+          }
+        });
     });
 
     // Close modal on outside click
